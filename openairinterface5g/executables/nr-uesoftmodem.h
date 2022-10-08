@@ -81,6 +81,7 @@ typedef struct {
   uint8_t        nr_dlsch_parallel; // number of threads for dlsch decoding, 0 means no parallelization
   uint8_t        max_ldpc_iterations; // number of maximum LDPC iterations
   tpool_t        Tpool;             // thread pool 
+  tpool_t        SyncTpool;   // Track thread pool 
 } nrUE_params_t;
 extern uint64_t get_nrUE_optmask(void);
 extern uint64_t set_nrUE_optmask(uint64_t bitmask);

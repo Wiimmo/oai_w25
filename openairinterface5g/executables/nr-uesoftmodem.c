@@ -30,7 +30,7 @@
 #include "SCHED_NR_UE/defs.h"
 #include "common/ran_context.h"
 #include "common/config/config_userapi.h"
-//#include "common/utils/threadPool/thread-pool.h"
+// #include "common/utils/threadPool/thread-pool.h"
 #include "common/utils/load_module_shlib.h"
 //#undef FRAME_LENGTH_COMPLEX_SAMPLES //there are two conflicting definitions, so we better make sure we don't use it at all
 #include "common/utils/nr/nr_common.h"
@@ -249,11 +249,19 @@ void init_tpools(uint8_t nun_dlsch_threads) {
   for (int i=0; i<NR_RX_NB_TH*NR_NB_TH_SLOT; i++) {
     memcpy(params+(i*3),"-1,",3);
   }
+
+  char Syncparams[NR_RX_NB_TH*NR_NB_TH_SLOT*3+1]={0};
+  for (int i=0; i<NR_RX_NB_TH*NR_NB_TH_SLOT; i++) {
+    memcpy(Syncparams+(i*3),"-1,",3);
+  }
+
   if (getenv("noThreads")) {
      initTpool("n", &(nrUE_params.Tpool), false);
+     initTpool("n", &(nrUE_params.SyncTpool), false);
      init_dlsch_tpool(0);
    } else {
      initTpool(params, &(nrUE_params.Tpool), false);
+     initTpool(Syncparams, &(nrUE_params.SyncTpool), false);
      init_dlsch_tpool( nun_dlsch_threads);
    }
 }

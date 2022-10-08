@@ -828,9 +828,10 @@ int UE_pss_syn_before_rx_stream(PHY_VARS_NR_UE *UE, int read_one_frame_flag)
 {
   printf("start syn timing and freq offset compulation before rx stream\n");
   int diff=0;           //得到当前两帧与下行同步时的两帧采样点偏差
-  usleep(1);            //计算得到diff、UE->trace_syn_fre_offset
+  //usleep(1);            //计算得到diff、UE->trace_syn_fre_offset
   UE->rx_offset+diff;   //修改值
   UE->trace_syn_fre_offset = 0; //频偏 double类型
+  return 0;
 }
 
 //+++++++++++++++++add_yjn++++++读一帧的数据
@@ -871,6 +872,7 @@ void *UE_thread(void *arg) {
   openair0_timestamp timestamp, writeTimestamp;
   void *rxp[NB_ANTENNAS_RX], *txp[NB_ANTENNAS_TX];
   int start_rx_stream = 0;
+  int start_track_sync=0;
   AssertFatal(0== openair0_device_load(&(UE->rfdevice), &openair0_cfg[0]), "");
   UE->rfdevice.host_type = RAU_HOST;
   UE->lost_sync = 0;
@@ -883,6 +885,9 @@ void *UE_thread(void *arg) {
   notifiedFIFO_t freeBlocks;
   initNotifiedFIFO_nothreadSafe(&freeBlocks);
 
+  notifiedFIFO_t syncnf;
+  initNotifiedFIFO(&syncnf);
+  
   int nbSlotProcessing=0;
   int thread_idx=0;
   NR_UE_MAC_INST_t *mac = get_mac_inst(0);
@@ -909,6 +914,7 @@ void *UE_thread(void *arg) {
       nbSlotProcessing = 0;
       UE->is_synchronized = 0;
       UE->lost_sync = 0;
+      UE->trace_syn_fre_offset=0; //zjw_add
     }
 
     if (syncRunning) {
@@ -920,11 +926,11 @@ void *UE_thread(void *arg) {
         //++++++add_yjn+++++++++初始同步后的pss定时频偏估计
         int max_rxoffset_frame = 12;             //每帧最大偏移采样点数
         int read_one_frame_flag = 0;             //是否read一帧的标志位,用于调整rx_offset
-        if (max_rxoffset_frame * trashed_frames > (UE->ssb_offset + UE->frame_parms.nb_prefix_samples)){ //下行同步检查过SSB在一帧内 右侧窗不会越界，只判断左窗
-          read_one_frame(UE, &timestamp, true);
-          trashed_frames+=1;
-          read_one_frame_flag = 1;
-        }
+        // if (max_rxoffset_frame * trashed_frames > (UE->ssb_offset + UE->frame_parms.nb_prefix_samples)){ //下行同步检查过SSB在一帧内 右侧窗不会越界，只判断左窗
+        //   read_one_frame(UE, &timestamp, true);
+        //   trashed_frames+=1;
+        //   read_one_frame_flag = 1;
+        // }
         readFrame(UE, &timestamp, false);  //add_yjn，读取两帧
         trashed_frames+=2;                 //add_yjn
         UE_pss_syn_before_rx_stream(UE, read_one_frame_flag);   //add_yjn同步线程，由pss计算rx_offset，trace_syn_fre_offset;
@@ -1000,6 +1006,9 @@ void *UE_thread(void *arg) {
     curMsg->proc.frame_rx    = (absolute_slot/nb_slot_frame) % MAX_FRAME_NUMBER;
     curMsg->proc.frame_tx    = ((absolute_slot+DURATION_RX_TO_TX)/nb_slot_frame) % MAX_FRAME_NUMBER;
     curMsg->proc.decoded_frame_rx=-1;
+
+    int slot_ssb  = is_ssb_in_slot(&UE->nrUE_config,curMsg->proc.frame_rx, curMsg->proc.nr_slot_rx,  &UE->frame_parms);
+
     //LOG_I(PHY,"Process slot %d thread Idx %d total gain %d\n", slot_nr, thread_idx, UE->rx_total_gain_dB);
 
 #ifdef OAI_ADRV9371_ZC706
@@ -1157,6 +1166,26 @@ void *UE_thread(void *arg) {
     nbSlotProcessing++;
     LOG_D(PHY,"Number of slots being processed at the moment: %d\n",nbSlotProcessing);
     pushTpool(&(get_nrUE_params()->Tpool), msgToPush);
+    
+    
+    // LOG_I(PHY,"===============slot ssb = %d\n", slot_ssb);
+    if (slot_ssb==1)
+    {
+      notifiedFIFO_elt_t *trackSyncRes=tryPullTpool(&syncnf,&(get_nrUE_params()->SyncTpool));
+
+      LOG_I(PHY,"===================Calling the Track sync thread\n");
+      if (trackSyncRes || !start_track_sync){
+        if (!start_track_sync)  start_track_sync = 1;
+        notifiedFIFO_elt_t *trackSyncMsg=newNotifiedFIFO_elt(sizeof(syncData_t),0,&syncnf,UE_trace_syn_thread);
+        syncData_t *trackSyncData=(syncData_t *)NotifiedFifoData(trackSyncMsg);
+        trackSyncData->UE=UE;
+        memset(&trackSyncData->proc, 0, sizeof(trackSyncData->proc));
+        pushTpool(&(get_nrUE_params()->SyncTpool), trackSyncMsg);
+      }
+      //pthread_t threads;
+     // threadCreate(&threads, UE_trace_syn_thread, (void *)&UE, "UE_trace_syn_thread", -1, OAI_PRIORITY_RT);
+    }
+    
 
   } // while !oai_exit
 

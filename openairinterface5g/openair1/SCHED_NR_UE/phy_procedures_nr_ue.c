@@ -1390,26 +1390,26 @@ int is_pbch_in_slot(fapi_nr_config_request_t *config, int frame, int slot, NR_DL
 }
 
 //++++++++add_yjn+++++++++跟踪同步线程
-int UE_trace_syn_thread(void*args_group)
+void UE_trace_syn_thread(void*args_group)
 {
   printf("+++++++++++++++++++++++trace syn thread start\n");
-  args_group_t *args = (args_group_t *)args_group;
-  PHY_VARS_NR_UE    *ue   = args->ue;
-  UE_nr_rxtx_proc_t *proc = args->proc;
-  uint8_t gNB_id = args->gNB_id;
-  NR_UE_PDCCH_CONFIG *phy_pdcch_config = args->phy_pdcch_config;
-  int frame_rx = proc->frame_rx;
-  int nr_slot_rx = proc->nr_slot_rx;
-  fapi_nr_config_request_t *cfg = &ue->nrUE_config;
+  // args_group_t *args = (args_group_t *)args_group;
+  // PHY_VARS_NR_UE    *ue   = args->ue;
+  // UE_nr_rxtx_proc_t *proc = args->proc;
+  // uint8_t gNB_id = args->gNB_id;
+  // NR_UE_PDCCH_CONFIG *phy_pdcch_config = args->phy_pdcch_config;
+  // int frame_rx = proc->frame_rx;
+  // int nr_slot_rx = proc->nr_slot_rx;
+  // fapi_nr_config_request_t *cfg = &ue->nrUE_config;
 
-  NR_DL_FRAME_PARMS *fp = &ue->frame_parms;
+  // NR_DL_FRAME_PARMS *fp = &ue->frame_parms;
 
-  usleep(1);//1us   ++++++++++++++++++++++跟踪同步模块位置+++++++，计算ue->rx_offset、ue->trace_syn_fre_offset
+  // usleep(1);//1us   ++++++++++++++++++++++跟踪同步模块位置+++++++，计算ue->rx_offset、ue->trace_syn_fre_offset
 
    
 
   printf("+++++++++++++++++++++++trace syn thread end \n");
-  return (0);
+  return;
 }
 //++++++end++++++++++++++
 
@@ -1459,14 +1459,14 @@ int phy_procedures_nrUE_RX(PHY_VARS_NR_UE *ue,
 
     //++++++++add_yjn+++++++++跟踪同步线程
     
-    args_group_t args_group;
+    // args_group_t args_group;
     
-    args_group.ue = ue;
-    args_group.proc = proc;
-    args_group.gNB_id = gNB_id;
-    args_group.phy_pdcch_config = phy_pdcch_config;
-    pthread_t threads;
-    threadCreate(&threads, UE_trace_syn_thread, (void *)&args_group, "UE_trace_syn_thread", -1, OAI_PRIORITY_RT);
+    // args_group.ue = ue;
+    // args_group.proc = proc;
+    // args_group.gNB_id = gNB_id;
+    // args_group.phy_pdcch_config = phy_pdcch_config;
+    // pthread_t threads;
+    // threadCreate(&threads, UE_trace_syn_thread, (void *)&args_group, "UE_trace_syn_thread", -1, OAI_PRIORITY_RT);
 
 
   //PBCH过程

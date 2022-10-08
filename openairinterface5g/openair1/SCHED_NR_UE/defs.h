@@ -132,6 +132,8 @@ typedef struct{
   NR_UE_PDCCH_CONFIG *phy_pdcch_config;
 }args_group_t;
 
+void UE_trace_syn_thread(void *arg);
+
 int phy_procedures_nrUE_RX(PHY_VARS_NR_UE *ue,
                            UE_nr_rxtx_proc_t *proc,
                            uint8_t gNB_id,
