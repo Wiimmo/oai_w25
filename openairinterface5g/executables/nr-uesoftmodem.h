@@ -38,6 +38,7 @@
     {"V" ,                       CONFIG_HLP_VCD,         PARAMFLAG_BOOL,  iptr:&vcdflag,                      defintval:0,     TYPE_INT,    0}, \
     {"uecap_file",               CONFIG_HLP_UECAP_FILE,  0,               strptr:(char **)&uecap_file,        defstrval:"./uecap.xml", TYPE_STRING, 0}, \
     {"rrc_config_path",          CONFIG_HLP_RRC_CFG_PATH,0,               strptr:(char **)&rrc_config_path,   defstrval:"./",  TYPE_STRING, 0}, \
+    {"doppler-shift",                NULL,                                            0,               iptr:(int32_t *)&doppler_shift,         defintval:0,     TYPE_INT,    0},  \
     {"ue-idx-standalone",        NULL,                   0,               u16ptr:&ue_idx_standalone,          defuintval:0xFFFF,    TYPE_UINT16,   0} \
 }
 

@@ -247,6 +247,8 @@ int nr_initial_sync(UE_nr_rxtx_proc_t *proc,
 
     /* process pss search on received buffer */
     sync_pos = pss_synchro_nr(ue, is, NO_RATE_CHANGE);
+    if (sync_pos<0) continue;  // 如果PSS检测失败，则不进行频偏补偿等操作
+
 
     if (sync_pos >= fp->nb_prefix_samples)
       ue->ssb_offset = sync_pos - fp->nb_prefix_samples;
@@ -263,8 +265,8 @@ int nr_initial_sync(UE_nr_rxtx_proc_t *proc,
     // digital compensation of FFO for SSB symbols
     if (ue->UE_fo_compensation){
       double s_time = 1/(1.0e3*fp->samples_per_subframe);  // sampling time
-      double off_angle = -2*M_PI*s_time*(ue->common_vars.freq_offset);  // offset rotation angle compensation per sample
-
+      double off_angle = 2*M_PI*s_time*(ue->common_vars.freq_offset);  // offset rotation angle compensation per sample
+      LOG_I(PHY,"PSS Compensation %d Hz \n",ue->common_vars.freq_offset);
       // In SA we need to perform frequency offset correction until the end of buffer because we need to decode SIB1
       // and we do not know yet in which slot it goes.
 
@@ -315,8 +317,8 @@ int nr_initial_sync(UE_nr_rxtx_proc_t *proc,
       // digital compensation of FFO for SSB symbols
       if (ue->UE_fo_compensation){
         double s_time = 1/(1.0e3*fp->samples_per_subframe);  // sampling time
-        double off_angle = -2*M_PI*s_time*freq_offset_sss;   // offset rotation angle compensation per sample
-
+        double off_angle = 2*M_PI*s_time*freq_offset_sss;   // offset rotation angle compensation per sample
+        LOG_I(PHY,"SSS Compensation %d Hz \n",freq_offset_sss);
         // In SA we need to perform frequency offset correction until the end of buffer because we need to decode SIB1
         // and we do not know yet in which slot it goes.
 

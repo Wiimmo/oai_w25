@@ -1390,9 +1390,12 @@ int is_pbch_in_slot(fapi_nr_config_request_t *config, int frame, int slot, NR_DL
 }
 
 //++++++++add_yjn+++++++++跟踪同步线程
-void UE_trace_syn_thread(void*args_group)
+void UE_trace_syn_thread(void*arg)
 {
   printf("+++++++++++++++++++++++trace syn thread start\n");
+  nr_rxtx_thread_data_t *syncD=(nr_rxtx_thread_data_t *) arg;
+  PHY_VARS_NR_UE *UE = syncD->UE;
+
   // args_group_t *args = (args_group_t *)args_group;
   // PHY_VARS_NR_UE    *ue   = args->ue;
   // UE_nr_rxtx_proc_t *proc = args->proc;
