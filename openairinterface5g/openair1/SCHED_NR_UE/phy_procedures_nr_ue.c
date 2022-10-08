@@ -1407,7 +1407,7 @@ void UE_trace_syn_thread(void*arg)
 
   // NR_DL_FRAME_PARMS *fp = &ue->frame_parms;
 
-  // usleep(1);//1us   ++++++++++++++++++++++跟踪同步模块位置+++++++，计算ue->rx_offset、ue->trace_syn_fre_offset
+  usleep(1000);//1us*1000   ++++++++++++++++++++++跟踪同步模块位置+++++++，计算ue->rx_offset、ue->trace_syn_fre_offset
 
    
 

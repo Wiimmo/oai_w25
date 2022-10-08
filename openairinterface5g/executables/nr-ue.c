@@ -826,13 +826,15 @@ static inline int get_readBlockSize(uint16_t slot, NR_DL_FRAME_PARMS *fp) {
 }
 
 //+++++++++++++++++add_yjn++++++接收数据流之前根据pss计算定时，纠正下行同步的rx_offset;计算频偏
-int UE_pss_syn_before_rx_stream(PHY_VARS_NR_UE *UE, int read_one_frame_flag)
+/* 更新rx_offset与频偏估计值 */
+int UE_pss_syn_before_rx_stream(PHY_VARS_NR_UE *UE, int position, int length)
 {
-  printf("start syn timing and freq offset compulation before rx stream\n");
-  int diff=0;           //得到当前两帧与下行同步时的两帧采样点偏差
   //usleep(1);            //计算得到diff、UE->trace_syn_fre_offset
-  UE->rx_offset+diff;   //修改值
-  UE->trace_syn_fre_offset = 0; //频偏 double类型
+  if(nr_track_sync(UE, position, length, get_softmodem_params()->sa) == 0)
+     LOG_I(PHY,"<<<<<<<<<<<<<<<<<<<<<<<<<Track successfully>>>>>>>>>>>>>>>>>>>>>>>>>\n");
+
+  // UE->rx_offset+diff;   //修改值
+  // UE->trace_syn_fre_offset = 0; //频偏 double类型
   return 0;
 }
 
@@ -924,25 +926,31 @@ void *UE_thread(void *arg) {
 
       if (res) {
         syncRunning=false;
-
-        //++++++add_yjn+++++++++初始同步后的pss定时频偏估计
-        int max_rxoffset_frame = 12;             //每帧最大偏移采样点数
-        int read_one_frame_flag = 0;             //是否read一帧的标志位,用于调整rx_offset
-        // if (max_rxoffset_frame * trashed_frames > (UE->ssb_offset + UE->frame_parms.nb_prefix_samples)){ //下行同步检查过SSB在一帧内 右侧窗不会越界，只判断左窗
-        //   read_one_frame(UE, &timestamp, true);
-        //   trashed_frames+=1;
-        //   read_one_frame_flag = 1;
-        // }
-        readFrame(UE, &timestamp, false);  //add_yjn，读取两帧
-        trashed_frames+=2;                 //add_yjn
-        UE_pss_syn_before_rx_stream(UE, read_one_frame_flag);   //add_yjn同步线程，由pss计算rx_offset，trace_syn_fre_offset;
-        //++++++end+++++++++++++
-
         syncData_t *tmp=(syncData_t *)NotifiedFifoData(res);
+
         if (UE->is_synchronized) {
-          decoded_frame_rx=(((mac->mib->systemFrameNumber.buf[0] >> mac->mib->systemFrameNumber.bits_unused)<<4) | tmp->proc.decoded_frame_rx);
-          // shift the frame index with all the frames we trashed meanwhile we perform the synch search
-          decoded_frame_rx=(decoded_frame_rx + UE->init_sync_frame + trashed_frames) % MAX_FRAME_NUMBER;
+                //++++++add_yjn+++++++++初始同步后的pss定时频偏估计
+              int max_rxoffset_frame = 12;             //每帧最大偏移采样点数
+              // int read_one_frame_flag = 0;             //是否read一帧的标志位,用于调整rx_offset
+              int track_position = UE->ssb_offset + UE->frame_parms.nb_prefix_samples;
+              int track_half_winlen = max_rxoffset_frame * trashed_frames;
+
+              if (track_half_winlen > track_position){ //下行同步检查过SSB在一帧内 右侧窗不会越界，只判断左窗
+              LOG_I(PHY,"<<<<<<<<<<<<<<<<<<<<<<   Track Adjustment   >>>>>>>>>>>>>>>>>>>>>>\n");
+                read_one_frame(UE, &timestamp, true);
+                trashed_frames+=1;
+                track_position += UE->frame_parms.samples_per_frame;
+                // read_one_frame_flag = 1;  
+              }
+
+              readFrame(UE, &timestamp, false);  //add_yjn，读取两帧
+              trashed_frames+=2;                 //add_yjn
+              UE_pss_syn_before_rx_stream(UE, track_position, track_half_winlen<<1);   //add_yjn同步线程，由pss计算rx_offset，trace_syn_fre_offset;
+              //++++++end+++++++++++++
+
+                decoded_frame_rx=(((mac->mib->systemFrameNumber.buf[0] >> mac->mib->systemFrameNumber.bits_unused)<<4) | tmp->proc.decoded_frame_rx);
+                // shift the frame index with all the frames we trashed meanwhile we perform the synch search
+                decoded_frame_rx=(decoded_frame_rx + UE->init_sync_frame + trashed_frames) % MAX_FRAME_NUMBER;
         }
         delNotifiedFIFO_elt(res);
         start_rx_stream=0;

@@ -709,6 +709,87 @@ int pss_synchro_nr(PHY_VARS_NR_UE *PHY_vars_UE, int is, int rate_change)
 }
 
 
+int pss_track_synchro_nr(PHY_VARS_NR_UE *PHY_vars_UE, int position,int length, int rate_change)
+{
+  NR_DL_FRAME_PARMS *frame_parms = &(PHY_vars_UE->frame_parms);
+  int synchro_position;
+  int **rxdata = NULL;
+
+  VCD_SIGNAL_DUMPER_DUMP_FUNCTION_BY_NAME(VCD_SIGNAL_DUMPER_FUNCTIONS_PSS_SYNCHRO_NR, VCD_FUNCTION_IN);
+
+  if (rate_change != 1) {
+
+    rxdata = (int32_t**)malloc16(frame_parms->nb_antennas_rx*sizeof(int32_t*));
+
+    for (int aa=0; aa < frame_parms->nb_antennas_rx; aa++) {
+      rxdata[aa] = (int32_t*) malloc16_clear( (frame_parms->samples_per_frame+8192)*sizeof(int32_t));
+    }
+#ifdef SYNCHRO_DECIMAT
+
+    decimation_synchro_nr(PHY_vars_UE, rate_change, rxdata);
+
+#endif
+  }
+  else {
+
+    rxdata = PHY_vars_UE->common_vars.rxdata;
+  }
+
+#if TEST_SYNCHRO_TIMING_PSS
+
+  opp_enabled = 1;
+
+  start_meas(&generic_time[TIME_PSS]);
+
+#endif
+
+  VCD_SIGNAL_DUMPER_DUMP_FUNCTION_BY_NAME(VCD_SIGNAL_DUMPER_FUNCTIONS_PSS_SEARCH_TIME_NR, VCD_FUNCTION_IN);
+  synchro_position = pss_search_time_track_nr(rxdata,
+                                        frame_parms,
+					                              position,
+                                        length,
+                                        PHY_vars_UE->common_vars.eNb_id,
+					(int *)&PHY_vars_UE->trace_syn_fre_offset);
+
+  VCD_SIGNAL_DUMPER_DUMP_FUNCTION_BY_NAME(VCD_SIGNAL_DUMPER_FUNCTIONS_PSS_SEARCH_TIME_NR, VCD_FUNCTION_OUT);
+
+#if TEST_SYNCHRO_TIMING_PSS
+
+  stop_meas(&generic_time[TIME_PSS]);
+
+  int duration_ms = generic_time[TIME_PSS].p_time/(cpuf*1000.0);
+
+  #ifndef NR_UNIT_TEST
+
+    printf("PSS SYNC execution duration %4d microseconds \n", duration_ms);
+
+  #endif
+
+#endif
+
+#ifdef SYNCHRO_DECIMAT
+
+  if (rate_change != 1) {
+
+    if (rxdata[0] != NULL) {
+
+      for (int aa=0;aa<frame_parms->nb_antennas_rx;aa++) {
+        free(rxdata[aa]);
+      }
+
+      free(rxdata);
+    }
+
+    restore_frame_context_pss_nr(frame_parms, rate_change);  
+  }
+#endif
+
+  VCD_SIGNAL_DUMPER_DUMP_FUNCTION_BY_NAME(VCD_SIGNAL_DUMPER_FUNCTIONS_PSS_SYNCHRO_NR, VCD_FUNCTION_OUT);
+  return synchro_position;
+}
+
+
+
 static inline int abs32(int x)
 {
   return (((int)((short*)&x)[0])*((int)((short*)&x)[0]) + ((int)((short*)&x)[1])*((int)((short*)&x)[1]));
@@ -971,5 +1052,101 @@ LOG_I(PHY,"[UE_SYNC_CFO]pss_cfo=%f( %dHZ)] , carrier Freq=%f\n",ffo_cp+ifo_pss,*
 #endif
 
   return(peak_position);
+}
+
+
+int pss_search_time_track_nr(int **rxdata, ///rx data in time domain
+                       NR_DL_FRAME_PARMS *frame_parms,
+                       int position,
+                       int length,
+                       int eNB_id,
+		                   int *f_off)
+{
+   unsigned int n, ar, peak_position, pss_source;
+  int64_t peak_value;
+  int64_t result;
+  int64_t avg=0;
+  int winPos = position-(length>>1);
+ // ===========================================  参数初始化   ===========================================
+
+  AssertFatal(length>0,"illegal length %d\n",length);
+  peak_value = 0;
+  peak_position = 0;
+  pss_source = 0;
+  /* PSS本地序列最大值计算 */
+  int maxval=0;
+  for (int i=0;i<2*(frame_parms->ofdm_symbol_size);i++) {
+    maxval = max(maxval,primary_synchro_time_nr[0][i]);
+    maxval = max(maxval,-primary_synchro_time_nr[0][i]);
+    maxval = max(maxval,primary_synchro_time_nr[1][i]);
+    maxval = max(maxval,-primary_synchro_time_nr[1][i]);
+    maxval = max(maxval,primary_synchro_time_nr[2][i]);
+    maxval = max(maxval,-primary_synchro_time_nr[2][i]);
+  }
+  int shift = log2_approx(maxval);//*(frame_parms->ofdm_symbol_size+frame_parms->nb_prefix_samples)*2);  //可以优化
+
+
+// ===========================================  PSS定时估计   ===========================================
+  for (n=0; n < length; n+=4) { //
+
+    int64_t pss_corr_ue=0;
+    /* calculate dot product of primary_synchro_time_nr and rxdata[ar][n]
+      * (ar=0..nb_ant_rx) and store the sum in temp[n]; */
+    for (ar=0; ar<frame_parms->nb_antennas_rx; ar++) {
+
+      /* perform correlation of rx data and pss sequence ie it is a dot product */
+      result  = dot_product64((short*)primary_synchro_time_nr[eNB_id],
+                              (short*)&(rxdata[ar][n+winPos]),
+                              frame_parms->ofdm_symbol_size,
+                              shift);
+      pss_corr_ue += abs64(result);
+    }
+    /* calculate the absolute value of sync_corr[n] */
+    avg+=pss_corr_ue;
+    if (pss_corr_ue > peak_value) {
+      peak_value = pss_corr_ue;
+      peak_position = n;  
+    }
+  }
+
+  // ===========================================  SNR计算   ===========================================
+  avg /= length>>2;
+  uint16_t trackSNR=dB_fixed64(peak_value)-dB_fixed64(avg);
+
+  LOG_I(PHY,"[UE_SYNC] nr_synchro_time: Sync source = %d, Peak found at pos %d, val = %llu (%d dB) avg %d dB\n", pss_source, peak_position, (unsigned long long)peak_value, dB_fixed64(peak_value),dB_fixed64(avg));
+  LOG_I(PHY,"[UE_SYNC] TrackSNR=%d\n",trackSNR);
+  if (trackSNR < 8) {/* SNR */
+    LOG_I(PHY,"[UE_SYNC] Sync SNR is too low, can't find PSS Position.\n");
+    return(-1);
+  }
+  peak_position += winPos; // add the start offset
+
+   //>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> CP FFO EST <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<//
+
+    double ffo_cp=0;
+    int64_t ffo_cp_corr = 0;
+    int64_t ffo_cp_est = 0;
+    int offsetUnit = frame_parms->nb_prefix_samples + frame_parms->ofdm_symbol_size;
+    int PosStart = peak_position - frame_parms->nb_prefix_samples; 
+        for (int i = -1; i < 3; i++){
+            ffo_cp_corr = dot_product64((short*)&(rxdata[0][PosStart+i*offsetUnit]), 
+                                      (short*)&(rxdata[0][PosStart+i*offsetUnit+frame_parms->ofdm_symbol_size]), // 修改：调用前完成数据截取
+                                      frame_parms->nb_prefix_samples,
+                                      shift);
+          ((int32_t*) &ffo_cp_est)[0] = ((int32_t*) &ffo_cp_est)[0]+((int32_t*) &ffo_cp_corr)[0];
+          ((int32_t*) &ffo_cp_est)[1] = ((int32_t*) &ffo_cp_est)[1]+((int32_t*) &ffo_cp_corr)[1];
+          //LOG_I(PHY,"[UE_SYNC_FFO_CP]  FFO_CP Corr:  ffo_cp_corr=%d+j%d\t \n",((int32_t*) &ffo_cp_est)[0],((int32_t*) &ffo_cp_est)[1]);
+          //  PosStart += offsetUnit;
+        }
+        int32_t re3,im3;
+        re3=((int32_t*) &ffo_cp_est)[0];
+        im3=((int32_t*) &ffo_cp_est)[1];
+        ffo_cp=-atan2(im3,re3)/2/M_PI; // ffo=-angle()/2/pi
+        // ffo_cp=0;
+        LOG_I(PHY,"[UE_SYNC_FFO_CP]  FFO_CP Est res:  ffo_cp=%f \n",ffo_cp);
+
+        *f_off = ffo_cp*frame_parms->subcarrier_spacing;  
+
+        return(peak_position);
 }
 

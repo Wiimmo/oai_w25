@@ -351,6 +351,7 @@ int nr_initial_sync(UE_nr_rxtx_proc_t *proc,
         // every 7*(1<<mu) symbols there is a different prefix length (38.211 5.3.1)
         int n_symb_prefix0 = (ue->symbol_offset/(7*(1<<mu)))+1;
         sync_pos_frame = n_symb_prefix0*(fp->ofdm_symbol_size + fp->nb_prefix_samples0)+(ue->symbol_offset-n_symb_prefix0)*(fp->ofdm_symbol_size + fp->nb_prefix_samples);
+        ue->sync_pos_frame = sync_pos_frame;
         // for a correct computation of frame number to sync with the one decoded at MIB we need to take into account in which of the n_frames we got sync
         ue->init_sync_frame = n_frames - 1 - is;
 
@@ -618,5 +619,28 @@ int nr_initial_sync(UE_nr_rxtx_proc_t *proc,
   //  exit_fun("debug exit");
   VCD_SIGNAL_DUMPER_DUMP_FUNCTION_BY_NAME(VCD_SIGNAL_DUMPER_FUNCTIONS_NR_INITIAL_UE_SYNC, VCD_FUNCTION_OUT);
   return ret;
+}
+
+
+int nr_track_sync(PHY_VARS_NR_UE *ue,
+                    int position,int length, int sa)
+{
+    int32_t sync_pos;
+    NR_DL_FRAME_PARMS *fp = &ue->frame_parms;
+
+    sync_pos = pss_track_synchro_nr(ue, position, length, NO_RATE_CHANGE);
+    if(sync_pos<0) return -1;
+    
+    if (sync_pos >= fp->nb_prefix_samples)
+      ue->ssb_offset = sync_pos - fp->nb_prefix_samples;
+    else
+      ue->ssb_offset = sync_pos + (fp->samples_per_subframe * 10) - fp->nb_prefix_samples;
+
+    if (ue->ssb_offset < ue->sync_pos_frame)
+          ue->rx_offset = fp->samples_per_frame - ue->sync_pos_frame + ue->ssb_offset;
+    else
+          ue->rx_offset = ue->ssb_offset - ue->sync_pos_frame;
+
+    return 0;
 }
 

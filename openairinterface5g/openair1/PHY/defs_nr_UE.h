@@ -982,7 +982,8 @@ typedef struct {
   int dl_stats[5];
   void* scopeData;
 
-  double trace_syn_fre_offset; //+++++++++++++++++add_yjn++++++++跟踪同步时由pss计算得到的频偏
+  int32_t sync_pos_frame;
+  int32_t trace_syn_fre_offset; //+++++++++++++++++add_yjn++++++++跟踪同步时由pss计算得到的频偏
 } PHY_VARS_NR_UE;
 
 /* this structure is used to pass both UE phy vars and
